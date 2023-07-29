@@ -1,0 +1,676 @@
+---
+title: "ML- Linear Algebra, loss function, GD,SGD"
+author: "Gostab Jen(jiaxu ren)"
+date: "2023-02-21"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+\-\--
+
+## PSYCH-GA 2043 Introduction to Machine Learning
+
+#### ***Instructor: Gostab.Jen , Paul Squires***
+
+**Students are welcome to email me via** $gostab.jen@nyu.edu$ **with any questions.**
+
+## **Loss Function, Regression, Gradient Descend, and SGD**
+
+## Objective
+
+The goal of this practice is to help students go over some slide materials and use programming languages to interpret what we have learned **in the first 5 classes.** Please follow the instructions neatly and complete your work; **the work won't be graded** but that may be conducive to your project as I will walk you through each method deeper.
+
+**Welcome to email me via** $gostab.jen@nyu.edu$ **with any questions.**
+
+## Estimate Time Cost
+
+If you expect to fully understand this materials(application coding, executions and evaluation as well as advanced properties), the time estimate in total will **exceed 8 hours**. As for just basic application of these discussed methods, you may complete it **within 2 hours**.
+
+## Clarification about exams
+
+This practice is not for your exam!! That means if you want to prepare for your exam, please note ***lecture notes are the only fair game of it. Concepts and practice won't be tested in your exam.***
+
+### Packages
+
+```{r}
+library(arm)
+library(dbplyr)
+library(knitr)
+library(ggplot2)
+library(rstan)
+library(rstanarm)
+library(tidyverse)
+```
+
+## Part 1: Introduction to Machine learning
+
+**In this part we will build basic concepts for machine learning and understand the importance to use machine learning.**
+
+Those questions marked as **\*\*** is not for everyone to complete because that may evoke some theoretical study of machine learning and advanced properties of our methods and estimators. Adding these is just for providing students with a more seamless experience from foundations to applications.
+
+The plain application of methods we discussed in the class will be marked **as bold element**-that is what you are expected to know and to be familiar with as you will apply these method in your project.
+
+### Learning theory
+
+Machine learning methods base their application on many more statistical learning theories.
+
+In the lecture, you have learnt how traditional statistics and machine learning define some notations:
+
+**Three important spaces in machine learning/statistical learning**
+
+Recall Linear algebra for null space($kernel$) and $image$, which is essential in machine learning and prediction,linear algebra.
+
+null space is that matrix such that linear transformation of $A$ is $0$, we know the linear transformation of $A$ is $AX$, and the transformation will be $Y$. Therefore, $kernel$/$null space$ is a set such that:
+
+***S***: {$x \in X | AX = 0$}
+
+$Image$ is a set of any possible $Y$, {$Y| AX =Y$}
+
+Now we are constructing the three spaces for feature, outcomes and actions.
+
+In machine learning/statistical learning basic setting, researchers assume each pair of feature and outcome are randomly selected from the population with a probability
+
+; in reality, we can never know the true joint distributions of this population and can just estimate.
+
+### Foundations of Regression
+
+#### 1.Loss and Risk of estimation
+
+this part is optional for deeper understanding of regression and ML regression estimate method. The basic idea of statistical machine learning method is to find a function such that the loss will be minimized.
+
+We define the loss function $l(f(x_i), y_i)$, for real data we can just observe limited number of outcomes and we can get the empirical(meaning just derived from data not a distribution) risk :
+
+$R_n(f)= \frac{1}{n}\sum_{i=1}^{n}l(f(x_i), y_i)$ = $E(l(f(x_i), y_i))$, if we know our estimation function and observations for a whole population, we can simply write loss function. However, since we can never know the true distribution of our target population, ***we can just estimate the loss function and empirical risk***
+
+Therefore, we can never get $R_n(f)$ but only $\hat R_n(f)$
+
+We want to find a $f$ such that : $f_n = arg min R_n(f)$, however we can just estimate $\hat f_n$ as well.
+
+***Below we will calculate margin from data and evaluate the loss function in each method***
+
+Reg 2.1 \*\***(optional but recommended)** 0-1 loss function
+
+Now we will see some properties of 0-1 loss. Recall the lecture 0-1 loss is when we get the correct prediction, we receive 1 score, otherwise 0.
+
+$R_n(f) = \frac{1}{n}\sum_{i=1}^{n}1$ (if $\hat f(x_i)= f(x_i)$), ***this function is non-convex, not differentiable.*** So it is really hard to optimize it as it is a ***N-P hard optimization problem***(will not be covered), we will visualize it first.
+
+```{r}
+library(reshape2)
+library(data.table)
+```
+
+```{r}
+# fake the data for classIfication margin
+xmin=-4
+xmax=4
+d = data.table(margin = seq(xmin,xmax,length.out=3000))
+# add column for 0-1 loss
+d[, Zero_one_loss:= as.numeric(margin <0)]
+
+#visualize the loss function based on margin
+p = ggplot(d, aes(x=margin, y=Zero_one_loss))
+  p = p + geom_line(size=1.6,color = 'red')+ xlab("Margin m=yf(x)") + ylab("Loss(m)")+xlim(-3,3)+ylim(0,4)
+  p = p + theme(legend.justification=c(0,0), legend.position=c(0.6,.6))
+  
+p
+```
+
+#### 2. Critical Appraisal of Loss function
+
+This example is based on the basic 0-1 classification.
+
+Calculate different types of loss functions and visualize them.
+
+Now I saved them as PNG Image file
+
+```{r}
+library(ggplot2)
+library(reshape2)
+library(data.table)
+
+jobFolder = getwd()
+
+xmin=-4
+xmax=4
+d = data.table(margin = seq(xmin,xmax,length.out=3000))
+d[, Zero_One := as.numeric(margin<0)]
+d[, Hinge := pmax(1-margin, 0)]
+d[, Perceptron := pmax(-margin, 0)]
+d[, Logistic := log(1+ exp(-margin))]
+d[, Exponential := exp(-margin)]
+d[, Square := (1-margin)^2]
+
+dd = as.data.table(melt(d, id.vars="margin"))#, variable.name="Loss")
+setnames(dd, "variable", "Loss")
+
+
+```
+
+#### 3. Decompose the data
+
+```{r}
+ plotOrder = c("Zero_One", "Perceptron", "Hinge", "Logistic")
+plotOrder = c("Zero_One", "Hinge", "Logistic", "Square")
+
+
+  p = ggplot(dd[Loss %in% plotOrder] , aes(x=margin, y=value, color=Loss))
+  p = p + geom_line(size=1.6)+ xlab("Margin m=yf(x)") + ylab("Loss(m)")+xlim(-3,3)+ylim(0,4)
+  p = p + theme(legend.justification=c(0,0), legend.position=c(0.6,.6))
+  #fname = paste0(jobFolder,"/loss.",paste(plotOrder[1:i],collapse="."),".png")
+  #print(fname)
+  #ggsave(filename=fname,plot=p, units="in", width=6, height = 4)
+p
+```
+
+```{r}
+library(gdata)
+```
+
+```{r}
+
+ddOrder <- c("Zero_One", "Hinge", "Logistic", "Square",'Logistic','Perception')
+
+for (i in 1:length(ddOrder)){
+  
+  dd_filter <- dd%>%filter(Loss == ddOrder[i])
+  fname = paste0('Loss_','paste(ddOrder[i],collapse=".")')
+  mv(from = 'dd_filter', to = " fname")
+}
+```
+
+## Part 2 : Regression
+
+In this section we will be investigating regression models in both mathematical and empirical way.
+
+As introduced, we want to find a function such that minimize the loss function, so for the linear response world, we define $Y$ as true value and $\hat Y = f(x)$as our predicted value.
+
+Based on our class discussion, some students want to know more about the linear algebra world of regression models. This practice is designed to make a comparison between explicit summation form and linear algebra form.
+
+I will extend some concepts in our class as supplementary materials. We will talk about rank -nullity theorem, invertible matrix and solving the systems of linear equations.
+
+### Building blocks of regressions
+
+in this section, we will build general regression-solving problems in mathematical way
+
+We have n feature vectors (just like the data frame listed) and one vector of targets.
+
+The most realistic is to solve the linear equation systems: $Y = AX$
+
+You might think $X = A^{-1}Y$ however, is $A$ invertible?
+
+$A$ is invertible if and only if $Rank(A) = n$ , if $A$ is a wide matrix: $n <d$ , you may have infinite solutions
+
+such as $A =\begin{pmatrix} a_{11} & a_{12} & a_{13} & a_{14} & a_{15} & a_{16} & a_{17} \\ a_{21} & a_{22} & a_{23} & a_{24} & a_{25} & a_{26} & a_{27} \\ a_{31} & a_{32} & a_{33} & a_{34} & a_{35} & a_{36} & a_{37} \end{pmatrix}, Y = \begin{pmatrix} y_1 \\ y_2 \\ y_3\\ y_4\\ y_5\\ y_6\\ y_7 \end{pmatrix}$
+
+However, if $A$ is a tall matrix: $n >d$ , you may have no solutions as indicated by kernel-nullity theorem.
+
+Therefore, the expected loss function is : $R(f) = E[(f(x)-y)^2]$ (OLS), if expanding the formula:
+
+$E[(f(x)-y)^2]= E((f(x)-E(y|x)^2))+ E[(y-E(y|x))^2]$, when $R(f)$ is minimized: $f(x) = E(y|x)$
+
+And, $E[E(y|x)] = E(y)$, **that is why we can use linear regression to predict unseen values.**
+
+```{r}
+# use real data and randomized distribution to justify it
+# Create a population
+n = 10000
+prescore <- rnorm(n ,75,4.5)
+postscore <- rnorm(10000, 0.8*prescore + 10 + rnorm(10000,0,1),3.5)
+pop <- data.frame(prescore = prescore, postscore = postscore)
+
+# create a certain() number of times for randomization of each sampling.
+#spl <- dplyr::sample_n(pop,1000)
+#mean(spl$prescore);mean(spl$postscore)
+#md1 <- glm( postscore ~ prescore )
+#?glm
+n = 1000
+
+for (i in 1:n) {
+  spl <- dplyr::sample_n(pop,1000)
+  s <- data.frame()
+  asy_mean <- mean(spl$prescore)
+  s <- rbind.data.frame(s,asy_mean)
+}
+```
+
+#### a. Linear Least Square Regression
+
+This section will involve some linear algebra fundamentals you have learned in the lecture and this knowledge is assumed to have been prescribed and required.
+
+A linear model is $\Omega$ = {$f : R^d\rightarrow R |f(x)=w^T x$ for $w\in R^d$}
+
+$\hat w$ = arg $min\frac{1}{n}\sum{(w^Tx-y_i)^2}$
+
+Gradient
+
+Draw a sample from `dgp1` named `dat1`.
+
+```{r}
+# draw sample from dgp1Model
+```
+
+#### b. Fit the general regression model
+
+```{r}
+getwd()
+dat.real <- read.csv('C:/Study Garden/Teach/Machine Learning Topics GA-2043/Machine Topics GA-2043/WVS_2021_data.csv')
+#In this caSE, the Z is encouragement, treatment is regular variable, Y is the postumb
+#library(AER)
+
+```
+
+### Pre-processing for data
+
+Now we process missing data, do variable selection.
+
+Please note the pre-processing of data is essential to your work. you should be very comfortable with R/python to implement any operations of the data set.
+
+```{r}
+dat_p <- data.frame(dat.real %>% dplyr::select(c(2,4,12:94,197:209)))
+# We choose the variables that can be used in the regression.
+
+sum(is.na(dat_p))
+summary(dat_p)
+##we want to process with the missing data. 
+# return the list of columns including mising values
+list_na <- colnames(dat_p)[apply(dat_p, 2, anyNA)]
+list_na
+dat_p_drop <-dat_p %>%
+na.omit()
+#here we just exclude the missing value, you can also impute the data using mean/median, just for practice.
+colnames(dat_p_drop)[c(48,51)]<-c('Happy','Life')
+#or you can use
+#colnames(dat_p_drop) <- c() 
+
+```
+
+```{r}
+hist(dat_p_drop$Happy,nclass = 30, freq = TRUE)
+summary(dat_p_drop$Happy)
+typeof(dat_p_drop$Happy)
+pl_hap <- ggplot(data = dat_p_drop)+geom_histogram(aes(x = Happy ))+labs(x ='Level')
+pl_hap
+```
+
+Now we will define the factor and levels of our categorical variables.
+
+```{r}
+dat_p_drop %>% dplyr::mutate(Happy =as.numeric(recode(Happy, '1'= '4', '2'= '3','3'= '2', '4' ='1')))
+Life_Happy <- 2.5*dat_p_drop$Happy + dat_p_drop$Life
+dat_full <- data.frame(dat_p_drop, Life_Happy)%>% dplyr::select(-Happy, -Life)
+Y <- dat_full$Life_Happy
+X <- dat_full %>% dplyr::select(-A_YEAR, -B_COUNTRY)
+dat_reg <- X
+```
+
+#### c.Fit the Standard Linear Regression
+
+```{r}
+fit_1 <- glm(Life_Happy ~.,family = gaussian,data = dat_reg)
+summary(fit_1)
+prediction_f1 <-predict.glm(fit_1,dat_reg %>% dplyr::select(Q1:Q207),type = 'response')
+loss_f1 <- prediction_f1-dat_reg['Life_Happy']
+SST <- sum(loss_f1^2)
+Z<- prediction_f1-mean(dat_reg$Life_Happy)
+SSR <- sum(Z^2)
+R_sqr <- SSR/SST
+err <- ggplot(data = loss_f1) + geom_histogram(aes(x = Life_Happy))+ labs(x = "error")
+err
+```
+
+We will be exploring some advanced properties of error term-loss of the regression
+
+```{r}
+library(matrixStats)
+library(MatrixModels)
+```
+
+we now construct two things: mean-independent of error and completely independent error term.
+
+It is said the error term should be independent of the independent variables. Also, as it is a Linear Regression model so it is the same thing to say the space of them is orthogonal.
+
+However, we define $E(\epsilon | x) = 0$, and $E(E(\epsilon|x))$, at first glance it should be confusing but we will do some general variables.
+
+We define a random variable $X$ and $Y$, $E(Y|X)$ can be viewed as a function.
+
+Because $E[f(X)]= \sum f(x)p(x),$
+
+```{r}
+# store error term in matrix form
+err_m<- as.matrix(loss_f1,colnames.force =NA)
+cova_m <- as.matrix.data.frame(dat_reg%>%dplyr::select(-Life_Happy),rownames.force =NA, colnames.force = NA )
+
+
+
+```
+
+#### d.From sample to population
+
+```{r}
+dat_s <- dplyr::sample_n(X,1000)
+fit_2 <- glm(Life_Happy ~., family = gaussian, data = dat_s)
+summary(fit_2)
+```
+
+#### e. Cross-validation for training data
+
+There are some packages that provides you with a convenient way to randomly select a training/test data.
+
+```{r}
+#Create a function that generates different training and testing data.
+
+cross_valid<- function(dat_input){ 
+  n <- nrow(dat_input)
+  s <- runif(1,min = 300,max = n)
+  sp <- dplyr::sample_n(dat_input,s)
+
+  return(sp)
+}
+samp_1 <- cross_valid(dat_reg)
+```
+
+#### f. Ridge Regression
+
+```{r}
+library(corrplot) #correlation plots
+library(leaps) #best subsets regression
+library(glmnet) #allows ridge regression, LASSO and elastic net
+library(caret) #this will help identify the appropriate parameters
+
+```
+
+The package **glmnet** we will use should receive covariates in matrix form so you cannot directly use data frame or object.
+
+```{r}
+X_1 <- as.matrix.data.frame(dat_reg %>% dplyr::select(Q1:Q207), rownames.force = NA)
+Y_1 <- as.matrix.data.frame(dat_reg['Life_Happy'], rownames.force = NA)
+#fit the model
+fit_3_Rid <- glmnet(X_1, Y_1, family = "gaussian", alpha = 10)
+summary(fit_3_Rid)
+fit_3_Rid
+plot(fit_3_Rid, label = TRUE)
+```
+
+#### g Lasso Regression
+
+```{r}
+fit_4_las <- glmnet(X_1, Y_1, family = "gaussian", alpha = 1)
+print(fit_4_las)
+
+# cross validation using glmnet
+set.seed(317)
+fit_4_las_cv <- cv.glmnet(X_1, Y_1, nfolds = 3)
+plot(fit_4_las_cv)
+
+#see the coefficient
+fit_4_las_cv$lambda.min;fit_4_las_cv$lambda.1se
+
+
+grid <- expand.grid(.alpha = seq(0, 1, by = 0.2), .lambda = seq(0.00, 0.2, by = 0.02))
+table(grid)
+control <- trainControl(method = "LOOCV")
+fit_5 <- train( Life_Happy~., data = dat_reg, method = "glmnet", trControl = control, tuneGrid = grid)
+
+##we will derive the optimal combination for ahpla and lambda
+fit_5$bestTune
+```
+
+## Part 3 : Missing data and Conditional Expectation
+
+### Building the Missing Response World
+
+```{r}
+library(rje)
+library(plotly)
+library(ggExtra)
+```
+
+\
+**Seavan1** Data generating distribution:\
+-$X\sim \text{Uniform}({0,1,2})$
+
+$Y|X=x\sim\mathcal{N}(x,1)$
+
+$R|X=x \sim \text{Bernoulli}(\text{expit}(4-4x))$
+
+```{r}
+n = 1000
+mx = 3
+mim = 0
+sigma = 1
+dt <- data.table(X= sample(0:2, n,replace = TRUE))
+dt[,Y_X:= rnorm(n,X,sigma)]
+dt[, Prob_obs:= expit(4-4*X)]
+dt[, obs:= runif(n,0,1) <= Prob_obs ]
+dt[,EY_X:= X]
+```
+
+**Visualize Data**
+
+```{r}
+grd_1 <- ggplot(data = dt,aes(x = X, y = Y_X,color = obs))+ theme(panel.background = element_blank())+geom_point(size = 1) + xlab("covariate")+ ylab("E(Y|X)")+geom_jitter(width = 0.1,size =0.7)+ stat_smooth(method = "glm", formula = "y ~ x")
+
+grd_2 <- ggplot(data =dt, aes(x=X, fill = obs)) + geom_bar(position = 'stack')
+
+grd_1
+ggMarginal(grd_1,type = "histogram",groupColour = TRUE)
+```
+
+```{r}
+grd_ob <- ggplot(data = dt[dt$obs=="TRUE",],aes(x = X, y = Y_X,color = obs))+ theme(panel.background = element_blank())+geom_point(size = 1) + xlab("covariate")+ ylab("E(Y|X)")+geom_jitter(width = 0.1,size =0.7)+ stat_smooth(method = "glm", formula = "y ~ x")
+
+grd_ob
+ggMarginal(grd_ob,type = 'histogram')
+```
+
+#### a. Complete Case
+
+We first introduce one realistic simple world called **Complete Case** and its relevant estimator $\mu_{cc}$
+
+$\hat\mu_{cc}= \frac{\sum\limits_{i=1}^n R_iY_i}{\sum\limits_{i=1}^n R_i}= \frac{E[RY]}{E[R]}$ , By **MCAR**, = $\frac{E[RY]}{E[R]}=\frac{E[R]E[Y]}{E[R]}=E[Y]=\mu_{cc}$.
+
+```{r}
+#Write a function for MCAR setting estimator
+ucc_test <- function(N)
+{
+  dt_full <- data.frame(sample=numeric(),E_R= numeric(),E_RY = numeric(),u_cc = numeric(),est_mean=numeric())
+  
+  for(i in 1:N){
+#start value for Y  
+  init_y <- rbinom(1000,1,0.75)# each time 1000 people
+  init_pr <- rbinom(1000,1,0.1)#each time 1000 people having 0.1 to respond
+  dt_full[i,]<- c(mean(init_y),mean(init_pr),mean(init_y*init_pr),mean(init_y*init_pr)/mean(init_pr),mean(dt_full$sample))
+  
+}
+return(dt_full)
+}
+```
+
+```{r}
+test <- ucc_test(1000)
+#vis <- ggplot(data = test,aes(x= seq(1:1000))) + geom_point(aes(y = est_mean),color= 'red',size = 0.8)+geom_point(aes(y = u_cc),color= 'blue',size = 0.8)
+
+
+```
+
+#### b. MAR Setting -Missing at random
+
+I this setting, $R$ is conditionally independent of $Y$ given covariates $X$
+
+$R\perp Y | X$
+
+(here we use single perpendicular symbol but **statistical independence** should be marked by **double** $\perp$)
+
+In this case, if $R$ is conditionally independent of $Y$ given covariates $X$, $u_{cc}$ is not a reliable estimator
+
+and the data we have is : $(X_i, R_i, R_iY_i)$
+
+Justify : $\frac{Y_i}{\pi_i}$, is the real cases that each unit represent.
+
+$E[\frac{RY}{\pi(x)}]=E[E[\frac{RY}{\pi(x)}|X]]$. $\pi(x)$ is a function of $x$ but the inner expectation is also a function of $x$ so for each iteration $\pi(x)$ is a constant number so take out what we know we got :
+
+$E[\frac{1}{\pi(x)}E[RY|X]]=E[\frac{1}{\pi(x)}E[R|X]E[Y|X]]= E[\frac{1}{\pi(x)}\pi(x)E[Y|X]]= E[Y]$
+
+$Bias(\mu_{ipw})=E[\mu_{ipw}-E[Y]]=E[\frac{1}{n}\sum\limits_{i=1}^{n}\frac{R_iY_i}{\pi(x)}-E[Y]]=\frac{1}{n}\sum\limits_{i=1}^{n}E[\frac{RY}{\pi(x)}]-E[Y]=E[Y]-E[Y]=0$.
+
+**Based on the LLN(Law of Large Number), we want to converge our estimate in probability to the real estimand.**
+
+$P(|\bar X-\mu|<\epsilon) = 1$, $\epsilon$ is a arbitrary pretty small number.
+
+$E[X] = \int\limits_{0}^{\infty}xf(x)dx = \int\limits_{0}^{a}xf(x)dx+\int\limits_{a}^{\infty}xf(x)dx \geq \int\limits_{a}^{\infty}xf(x)dx\geq a\int\limits_{a}^{\infty}f(x)dx =aP(X\geq a)$
+
+$P(X \geq a) \leq \frac{E[X]}{a}$
+
+Moreover, $P(|\bar X - \mu|\geq k)=P(Y\geq k)=P(Y^2 \geq k^2)$. $\frac{E[Y^2]}{k^2}\geq P(Y^2 \geq k^2), P(Y \geq k) \leq \frac{Var(X)}{k^2}=\frac{\sigma_X^2}{k^2}$
+
+$P(|\mu_{ipw}-E[Y]|\leq\epsilon)= 1-[P(|\mu_{ipw}-E[Y]|\geq\epsilon)]; P(|\mu_{ipw}-E[Y]|\geq\epsilon) \leq \frac{Var(\mu_{ipw}-E[Y])}{\epsilon^2}$
+
+$=\frac{E[(\mu_{ipw}-E[Y]-E[\mu_{ipw}-E[Y])^2]}{\epsilon^2}=\frac{E[(\mu_{ipw}-E[Y]-0)^2]}{\epsilon^2}=0$
+
+The new estimator space $\Phi$ should be an augmented inverse probability estimator for $E[E[Y|R_1,R_2…R_i]]$
+
+Then consider a situation in which we have more covariates to estimate the propensity score. Our project is focusing on launching a better method for estimating the propensity score but addressing some remained issues about traditional PSM methods. We might be able to propose a solution to how to reduce the abnormal observations that may cause estimator highly correlated to the behavior of weights. It is clear that the inverse probability weighting method. Again, using augmented inverse probability weighting method can be a good workaround to those remained problems but still be careful about our estimators.
+
+```{r}
+
+
+```
+
+#### Appendix a. Further Exploration of Linear Regression
+
+As $A$ is not invertible in most cases,we should find a quasi-inverse that always exists so we need to compute its **Pseudo-inverse:** $A^+$ = $(U\Sigma V^T)^{-1}$ .
+
+Therefore, $AX = b= A^+AX = A^+b = (U\Sigma V^T)^{-1}(U\Sigma V^T)X = (U\Sigma V^T)^{-1}b$
+
+$X = V\Sigma ^{-1}U^T b$, for only one independent variable, we have
+
+$A=\begin{pmatrix} a_1 \\ a_2 \\ a_3 \\.\\. \end{pmatrix}$, $b = \begin{pmatrix} b_1 \\ b_2 \\ b_3 \\.\\. \end{pmatrix}$
+
+Justify : $X = A^+b = \frac{A^Tb}{|A|^2} = \frac{Cov(A,b)}{Var(A)}$.
+
+## Part 4: ML for Advanced Causal Inference
+
+The following work will be discussing some most recent causal machine learning methods
+
+Topics will be arranged in this order:
+
+**Topic 1: Matching Methods**
+
+1.  Propensity Score Matching
+2.  Other distance Matching Method
+
+Topic 2: Causal Learners
+
+1.  $X- Learner$.
+2.  $T- Leaner$
+3.  $S-Leaner$
+4.  **Non-parametric Regression Models**
+
+#### A. Underpinnings of Causal Non-parametric Modeling
+
+compared to parametric modeling, we can define a similar loss function(or Empirical Risk $R_i$)
+
+For Non-parametric modeling, we have:
+
+$E[(\hat m(x)-Y_i)^2]= E[(\hat m(x)-m(x))^2]$, based on ***Adam's Law***
+
+Ideally, $m(x) = E[Y|X]$. and we hope our estimate function minimize the Loss.
+
+Therefore, $E[(m^*(x)-Y)^2]= \min\limits_{f:R^d \rightarrow R}{} E[(f(X)-Y)^2]$.
+
+$E[(f(X)-Y)^2]=E[f(X)-m(X)+m(X)-Y))]=E[f(X)-m(X)]^2 +E[m(X)-Y]^2+E[(f(X)-m(X))(m(X)-Y)]$.
+
+$= E[f(X)-m(X)+m(X)-Y))]=E[f(X)-m(X)]^2+E[E[(f(X)-m(X))(m(X)-Y)]|X]]$.
+
+This equation has been provably efficient for researchers to derive a optimal point in the Parametric context. The residual is strictly orthogonal to any function of $x$. $\rightarrow$ The third part of expectation product is 0 as $E[f(X)-m(X)]E[m(X)-Y|X]=E[f(X)-m(X)]E[m(x)-m(x)]=0$.
+
+Hence, $E[f(X)-Y]^2=\int_{R^d}{}|f(x)-m(x)\mu (dx)|+E[m(X)-Y]^2$.
+
+## Part 4 Interest of Population
+
+For a longitudinal study, some units/subjects were traced and surveyed more than one time. Our interest is to the effect of school choice(public school or private institute, E-verify schools, charter schools excluded) . The second follow-up study provides us with information about when and where the students were matriculated in a postsecondary study.
+
+```{r}
+# The third follow-up
+els_f3 <- read.csv("C:/Study Garden/Courses/Advanced Causal Inference/els_02_12_byf3pststu_v1_0.csv")
+```
+
+```{r}
+#the first follow-up
+els_f1 <- read.csv("C:/Study Garden/Courses/Advanced Causal Inference/")
+```
+
+```{r}
+els_inst_f2 <- read.csv('C:/Study Garden/Courses/Advanced Causal Inference/els_02_12_f2inst_v1_0.csv')
+```
+
+```{r}
+pl = ggplot(data = els_f3,aes(x = BYRACE), fill = BY_RACE)+ geom_histogram()
+pl
+```
+
+```{r}
+els_inst_f3 <-  read.csv('C:/Study Garden/Courses/Advanced Causal Inference/els_02_12_f3inst_v1_0.csv')
+```
+
+```{r}
+
+miss <- colnames(els_f3)[apply(els_f3,2, anyNA)]
+
+```
+
+```{r}
+els_sp <- dplyr::sample_n(els_inst_f3,10)
+els_sp
+p <- dplyr::sample_n(10)
+for(i in 1:nrow(data)){
+  test <- numeric(data[i,1])= numeric(data[i+1, 1])
+  
+  
+  
+  
+}
+} 
+
+```
+
+```{r}
+stra_els <- els_f3%>% filter(BYRACE =='2')
+stra_els["BYRACE_R"]
+colnames(els_inst_f3)[1] <- 'STU_ID'
+els_inst_f3 <- els_inst_f3%>% group_by(STU_ID) %>% filter(row_number() == n())
+els_inst_f2<-els_inst_f2%>% group_by(STU_ID) %>% filter(row_number() == n())
+mat <- inner_join(els_inst_f3,els_inst_f2,by = "STU_ID")%>%dplyr::mutate(sch_st =as.numeric(recode(F3ICNTRL, "1"="0", "2"="1", "3" ="1")))
+# since there are some student doing survey more than once, we should just use one result for a student
+mat
+
+#mat <- rbind.data.frame(mat, )
+```
+
+```{r}
+library(bart)
+library(gdata)
+library(glm)
+library(rstan)
+#create a simulation for Parametric modeling for Causal Inference
+para_f <- NULL
+initation = 1
+sigma = 0.5
+cardinality = seq(1000:2500)
+
+f <= function(sigma, initiation){
+para_f <- NULL
+para_f_c <- data.frame(stepsize = numeric(), sup = numeric(), inf = numeric())
+for (i in 1: length(cardinality)){
+  
+  para_f_c[i,] <- c()
+  
+  
+  
+  
+  
+}
+}
+```
